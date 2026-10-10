@@ -296,8 +296,37 @@ a:focus-visible{outline:calc(2 * var(--u)) solid var(--brand);outline-offset:cal
 }
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* Initial entrance only. The page's background and card shell stay still. */
+html.entrance-pending .hero .badge,
+html.entrance-pending .hero .lede,
+html.entrance-pending .hero .signup,
+html.entrance-pending .brand .logo,
+html.entrance-pending .brand .btn-touch,
+html.entrance-pending .card-top .col,
+html.entrance-pending .tabs,
+html.entrance-pending .card-bottom{
+  opacity:0;
+  transform:translateY(8px);
+}
+html.entrance-pending .hero h1,
+html.entrance-pending .brand h2{
+  opacity:0;
+  clip-path:inset(0 0 100% 0);
+  transform:translateY(8px);
+}
 </style>
-<script>document.documentElement.classList.add('js')</script>
+<script>
+document.documentElement.classList.add('js');
+if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches &&
+    'animate' in Element.prototype) {
+  document.documentElement.classList.add('entrance-pending');
+  // If initialization fails, restore the fully visible page.
+  window.entranceFallback = setTimeout(function(){
+    document.documentElement.classList.remove('entrance-pending');
+  }, 3000);
+}
+</script>
 </head>
 <body>
 <div class="page">
@@ -401,6 +430,80 @@ a:focus-visible{outline:calc(2 * var(--u)) solid var(--brand);outline-offset:cal
   });
   if(mq.addEventListener) mq.addEventListener('change',roles); else mq.addListener(roles);
   roles(); select(0);
+})();
+</script>
+<script>
+/* One shared entrance timeline; all temporary animation styles are removed at the end. */
+(function(){
+  var root=document.documentElement;
+  if(!root.classList.contains('entrance-pending')) return;
+
+  var motionPreference=window.matchMedia('(prefers-reduced-motion: reduce)');
+  var ease='cubic-bezier(.22,1,.36,1)';
+  var animations=[];
+  var finished=false;
+  function add(element,kind,delay,duration,distance){
+    if(!element || getComputedStyle(element).display==='none') return;
+    var from=kind==='type'
+      ? {opacity:0,clipPath:'inset(0 0 100% 0)',transform:'translateY('+distance+'px)'}
+      : {opacity:0,transform:'translateY('+distance+'px)'};
+    var to=kind==='type'
+      ? {opacity:1,clipPath:'inset(0 0 0 0)',transform:'none'}
+      : {opacity:1,transform:'none'};
+    animations.push(element.animate([from,to],{
+      delay:delay,duration:duration,easing:ease,fill:'both'
+    }));
+  }
+  function one(selector,kind,delay,duration,distance){
+    add(document.querySelector(selector),kind,delay,duration,distance);
+  }
+
+  function finish(){
+    if(finished) return;
+    finished=true;
+    clearTimeout(window.entranceFallback);
+    root.classList.remove('entrance-pending');
+    animations.forEach(function(animation){animation.cancel();});
+    document.removeEventListener('pointerdown',finish);
+    document.removeEventListener('keydown',finish);
+    if(motionPreference.removeEventListener)
+      motionPreference.removeEventListener('change',onMotionChange);
+  }
+  function onMotionChange(event){if(event.matches) finish();}
+  function start(){
+    if(!root.classList.contains('entrance-pending')) return;
+    if(motionPreference.matches){finish();return;}
+
+    // The mark establishes context; the headline carries the main reveal.
+    one('.hero .badge','settle',80,460,6);
+    one('.hero h1','type',220,860,10);
+    one('.hero .lede','settle',560,560,8);
+    one('.hero .signup','settle',820,600,8);
+
+    // The card is an unmoving anchor. Its content enters in reading order.
+    one('.brand .logo','settle',150,480,6);
+    one('.brand h2','type',700,650,8);
+    one('.brand .btn-touch','settle',1100,500,6);
+    var columns=[].slice.call(document.querySelectorAll('.card-top .col'));
+    if(window.matchMedia('(max-width:599px)').matches){
+      one('.tabs','settle',1040,450,5);
+      add(document.querySelector('.card-top .col.is-active'),'settle',1160,530,5);
+    }else{
+      columns.forEach(function(column,index){
+        add(column,'settle',1040+index*90,570,5);
+      });
+    }
+    one('.card-bottom','settle',1440,420,4);
+
+    document.addEventListener('pointerdown',finish,{once:true});
+    document.addEventListener('keydown',finish,{once:true});
+    if(motionPreference.addEventListener)
+      motionPreference.addEventListener('change',onMotionChange);
+    Promise.all(animations.map(function(animation){return animation.finished;})).then(finish,finish);
+  }
+  if(document.fonts && document.fonts.ready)
+    document.fonts.ready.then(start,start);
+  else start();
 })();
 </script>
 </body>
